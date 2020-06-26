@@ -81,24 +81,20 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         v_sql := v_sql || ' UNLOGGED';
     END IF;
     v_sql := v_sql || ' TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
-    SELECT relhasoids INTO v_hasoids FROM pg_catalog.pg_class WHERE oid::regclass = p_parent_table::regclass;
-    IF v_hasoids IS TRUE THEN
-        v_sql := v_sql || ' WITH (OIDS)';
-    END IF;
     EXECUTE v_sql;
     SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE 'ALTER TABLE '||v_partition_name||' SET TABLESPACE '||v_parent_tablespace;
     END IF;
-    EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
+    EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check
         CHECK ('||v_control||'>='||quote_literal(v_id)||' AND '||v_control||'<'||quote_literal(v_id + v_part_interval)||')';
     EXECUTE 'ALTER TABLE '||v_partition_name||' INHERIT '||p_parent_table;
 
-    FOR v_parent_grant IN 
+    FOR v_parent_grant IN
         SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types, grantee
-        FROM information_schema.table_privileges 
+        FROM information_schema.table_privileges
         WHERE table_schema ||'.'|| table_name = p_parent_table
-        GROUP BY grantee 
+        GROUP BY grantee
     LOOP
         EXECUTE 'GRANT '||array_to_string(v_parent_grant.types, ',')||' ON '||v_partition_name||' TO '||v_parent_grant.grantee;
         SELECT array_agg(r) INTO v_revoke FROM (SELECT unnest(v_all) AS r EXCEPT SELECT unnest(v_parent_grant.types)) x;
